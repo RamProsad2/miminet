@@ -47,7 +47,7 @@ def configure_access(switch: IPSwitch, intf: str, vlan: int) -> None:
     switch.cmd(f"bridge vlan del dev {intf} vid 1")
     switch.cmd(f"bridge vlan add dev {intf} vid {vlan} pvid untagged")
     
-    # Enable ARP Proxy on this interface
+# Enable ARP Proxy on this interface
     switch.cmd(f"sysctl -w net.ipv4.conf.{intf}.proxy_arp=1")
     switch.cmd(f"sysctl -w net.ipv4.conf.{intf}.forwarding=1")  # Enable forwarding
 
