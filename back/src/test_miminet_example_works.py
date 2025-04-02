@@ -213,3 +213,13 @@ def test_miminet_work_with_excluded_packages(test: Case) -> None:
     expected_packets = extract_important_fields(expected_animation, exclude_regex)
 
     assert actual_packets == expected_packets
+
+DINAMYC_ARP_FILE_NAMES.append(
+    (
+        "ram_arp_proxy_network.json",
+        "ram_arp_proxy_answer.json",
+        r"ARP-response\\n.+ at ([0-9a-fA-F]{2}[:]){6}",  # Regex to match dynamic MAC
+        len("ARP-response\\n10.0.0.3 at "),  # Length to extract MAC
+        r"mac"
+    )
+)
