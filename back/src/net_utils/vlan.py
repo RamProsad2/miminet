@@ -83,3 +83,4 @@ def add_bridge(switch: IPSwitch) -> None:
     switch.cmd(f"sysctl -w net.ipv4.conf.{f'br-{switch.name}'}.proxy_arp=1")
     switch.cmd(f"sysctl -w net.ipv4.conf.{f'br-{switch.name}'}.forwarding=1")
 
+
