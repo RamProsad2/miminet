@@ -220,6 +220,15 @@ and open http://localhost:8080.
 `./miminet.sh logs miminet`. nginx resolves the app per request, so a 502 goes
 away once the app is up; no nginx restart is needed.
 
+**`ERR_EMPTY_RESPONSE` on http://localhost in a Windows browser, while
+`curl http://localhost` inside WSL works.** IPv6 is disabled in WSL: Windows
+resolves `localhost` to `::1`, the WSL relay accepts the connection and has
+nowhere to forward it. The usual culprit is the prod-style back container
+(`back/docker-compose.yml`, `network_mode: host`): Mininet disables IPv6 in the
+netns its switches run in, which is the host's netns there. Run
+`./miminet.sh doctor --fix` to re-enable it, or use http://127.0.0.1. The
+`back` service of `compose.yaml` has its own netns and does not do this.
+
 **"Emulate" spins forever.** The emulation worker is not running or cannot
 reach RabbitMQ: `./miminet.sh ps`, `./miminet.sh logs back`. If `up` printed
 "emulation is OFF", check `./miminet.sh doctor`.

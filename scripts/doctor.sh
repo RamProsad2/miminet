@@ -128,6 +128,17 @@ if [ "$FIX" = 1 ] && [ "$OS" = Linux ] && [ "$KERNEL_FAILED" = 0 ] && [ -d /etc/
     fi
 fi
 
+# The prod-style back container (network_mode: host) disables IPv6 in the
+# host netns while emulating; Windows then reaches WSL's localhost over ::1
+# and the browser gets ERR_EMPTY_RESPONSE.
+if [ "$OS" = Linux ] && [ "$(cat /proc/sys/net/ipv6/conf/lo/disable_ipv6 2>/dev/null)" = 1 ]; then
+    if [ "$FIX" = 1 ] && sudo sysctl -qw net.ipv6.conf.all.disable_ipv6=0 net.ipv6.conf.default.disable_ipv6=0 net.ipv6.conf.lo.disable_ipv6=0; then
+        ok "IPv6 re-enabled on the host"
+    else
+        warn "IPv6 is disabled on the host (often by an old host-network back container); http://localhost from Windows fails with an empty response. Fix: scripts/doctor.sh --fix"
+    fi
+fi
+
 echo "== Repo"
 crlf="$(cd "$REPO" && git ls-files -z '*.sh' 'back/Dockerfile' 'front/Dockerfile' '*.template' 2>/dev/null \
         | xargs -0 -r grep -l $'\r' 2>/dev/null)"
