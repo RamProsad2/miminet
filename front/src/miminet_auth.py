@@ -166,6 +166,14 @@ if os.path.exists(yandex_secrets_file):
     with open(yandex_secrets_file, "r") as file:
         yandex_json = json.loads(file.read())
 
+# Sign-in options shown on the login page, comma-separated: password, vk,
+# yandex. Unset keeps the historical VK + Yandex buttons. "password" adds the
+# email/password form; it is for local development only (see
+# check_dev_auth_allowed).
+AUTH_PROVIDERS = [
+    p.strip() for p in os.getenv("AUTH_PROVIDERS", "vk,yandex").split(",") if p.strip()
+]
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("miminet_auth")
 
@@ -270,6 +278,12 @@ def _bind_social_account(provider_name, field_name, field_value):
     return _redirect_after_social_link()
 
 
+def _render_login_page():
+    return render_template(
+        "auth/login.html", user=current_user, auth_providers=AUTH_PROVIDERS
+    )
+
+
 def login_index():
     next_url = request.args.get("next")
 
@@ -305,12 +319,12 @@ def login_index():
                 return response
             else:
                 flash("Пара логин и пароль указаны неверно", category="error")
-                return render_template("auth/login.html", user=current_user)
+                return _render_login_page()
         else:
             flash("Пользователя с таким почтовым адресом нет", category="error")
-            return render_template("auth/login.html", user=current_user)
+            return _render_login_page()
 
-    return render_template("auth/login.html", user=current_user)
+    return _render_login_page()
 
 
 @login_required
@@ -730,6 +744,8 @@ class TestUserData:
 
 def insert_test_user(app):
     with app.app_context():
+        if User.query.filter_by(email=TestUserData.email).first():
+            return
         try:
             test_user = User(
                 nick=TestUserData.nick,
@@ -755,3 +771,47 @@ def remove_test_user(app):
         except Exception as e:
             db.session.rollback()
             logger.error(f"An error occurred while removing the test user: {e}")
+
+
+DEV_ADMIN_ROLE = 1  # miminet_admin.ADMIN_ROLE_LEVEL
+
+
+def check_dev_auth_allowed(mode):
+    """Refuse to start a non-dev app with development sign-in enabled."""
+    if mode == "dev":
+        return
+    enabled = []
+    if "password" in AUTH_PROVIDERS:
+        enabled.append("AUTH_PROVIDERS=password")
+    if os.getenv("DEV_ADMIN_PASSWORD"):
+        enabled.append("DEV_ADMIN_PASSWORD")
+    if enabled:
+        raise RuntimeError(
+            f"MODE={mode}: development sign-in is enabled ({', '.join(enabled)}). "
+            "It is allowed only with MODE=dev."
+        )
+
+
+def seed_dev_admin(app):
+    """Create or update the local admin from DEV_ADMIN_EMAIL/DEV_ADMIN_PASSWORD.
+
+    Idempotent: re-running resets the password and admin role, so the
+    credentials in .env always work. Does nothing when either var is unset.
+    """
+    email = os.getenv("DEV_ADMIN_EMAIL")
+    password = os.getenv("DEV_ADMIN_PASSWORD")
+    if not email or not password:
+        return
+    with app.app_context():
+        try:
+            user = User.query.filter_by(email=email).first()
+            if user is None:
+                user = User(nick="Dev Admin", email=email)
+                db.session.add(user)
+            user.password_hash = generate_password_hash(password)
+            user.role = max(user.role or 0, DEV_ADMIN_ROLE)
+            db.session.commit()
+            logger.info(f"[dev] admin account ready: {email}")
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            logger.error(f"An error occurred while seeding the dev admin: {e}")

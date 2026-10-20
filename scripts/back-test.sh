@@ -8,7 +8,7 @@
 # Usage:
 #   back-test.sh build                 build the image (back/Dockerfile)
 #   back-test.sh probe                 verify emulation works in this runtime
-#   back-test.sh test                  run the full backend test suite
+#   back-test.sh test [pytest args]    run the backend test suite (or a subset, e.g. -k arp)
 #   back-test.sh collect               pytest --collect-only (expect 24)
 #   back-test.sh worker                dev Celery worker (container netns)
 
@@ -25,7 +25,9 @@ CMD="${1:-help}"
 # "No such RSTP object" failures).
 
 run_emulation() {
-    local pytest_args=("$@")
+    # Shell-quote each arg: the command below is a string run by bash -c.
+    local pytest_args
+    pytest_args=$(printf '%q ' "$@")
     "$BACK_ENGINE" run $(base_run_args) $(engine_flags) \
         "$BACK_IMAGE" \
         -c "
@@ -33,7 +35,7 @@ run_emulation() {
             bash /repo/back/ovs-init.sh
             uv pip install --python /app/.venv/bin/python pytest
             cd /repo/back/tests
-            PYTHONPATH=/repo/back/src /app/.venv/bin/python -m pytest \"${pytest_args[*]}\" -o log_file=/tmp/back_test.log -p no:cacheprovider --basetemp=/tmp/pytest || { mn -c >/dev/null 2>&1; exit 1; }
+            PYTHONPATH=/repo/back/src /app/.venv/bin/python -m pytest ${pytest_args} -o log_file=/tmp/back_test.log -p no:cacheprovider --basetemp=/tmp/pytest || { mn -c >/dev/null 2>&1; exit 1; }
             mn -c >/dev/null 2>&1 || true
         "
 }
@@ -70,8 +72,13 @@ cmd_test() {
         echo "       this is a known limitation — run in a rootful docker or CI."
         exit 1
     fi
-    echo "[test] running the full backend suite (24 tests)..."
-    run_emulation .
+    if [[ $# -gt 0 ]]; then
+        echo "[test] running: pytest $*"
+        run_emulation "$@"
+    else
+        echo "[test] running the full backend suite..."
+        run_emulation .
+    fi
     echo "[ok] backend tests finished"
 }
 
@@ -107,7 +114,7 @@ back-test.sh — run Miminet backend tests locally without host root.
 Commands:
   build     build the back image (back/Dockerfile)
   probe     verify emulation works in this runtime (safety gate)
-  test      run the full backend test suite
+  test      run the backend test suite; extra args go to pytest (e.g. test -k arp)
   collect   pytest --collect-only (expect 24) — no special capabilities
   worker    dev Celery worker (container netns; host netns untouched)
 
@@ -122,7 +129,7 @@ EOF
 case "$CMD" in
     build)   detect_engine; cmd_build ;;
     probe)   detect_engine; cmd_probe ;;
-    test)    detect_engine; cmd_test ;;
+    test)    detect_engine; shift; cmd_test "$@" ;;
     collect) detect_engine; cmd_collect ;;
     worker)  detect_engine; cmd_worker ;;
     help|-h|--help) cmd_help ;;

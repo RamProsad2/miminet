@@ -1,0 +1,135 @@
+# Local development stack: web app, nginx, PostgreSQL, RabbitMQ and the
+# Mininet emulation worker. Start it with ./miminet.sh up (see
+# docs/LOCAL_SETUP.md); plain `docker compose --profile emulation up` works too
+# once .env exists (cp .env.example .env and fill in the __GENERATE__ values).
+#
+# Prod does not use this file: see start_all_containers.sh,
+# front/docker-compose-prod.yml and back/docker-compose.yml.
+
+name: miminet
+
+x-amqp-url: &amqp_url amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${POSTGRES_DEFAULT_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_DEFAULT_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DATABASE_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.3-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - ./front/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./front/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./front/rabbitmq/metrics_collector.conf:/etc/rabbitmq/conf.d/20-management_agent.disable_metrics_collector.conf:ro
+      # Named volume, not a bind mount: Erlang refuses an .erlang.cookie with
+      # the loose permissions a /mnt/c (NTFS) checkout gives it.
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  miminet:
+    build:
+      context: .
+      dockerfile: front/Dockerfile
+      args:
+        WITH_YANDEX_CA: "0"
+    image: miminet-front:dev
+    env_file: .env
+    environment:
+      amqp_urls: *amqp_url
+      celery_concurrency: ${FRONT_CELERY_CONCURRENCY:-4}
+    volumes:
+      - avatars:/app/static/avatar
+      - pcaps:/app/static/pcaps
+      - quiz-images:/app/static/quiz_images
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      # uwsgi speaks the uwsgi protocol on :80, so check that the socket accepts.
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 80), 2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    restart: unless-stopped
+
+  nginx:
+    image: nginx
+    volumes:
+      - ./front/default.dev.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      miminet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  # Mininet/OVS emulation worker. Needs a Linux kernel with openvswitch,
+  # sch_netem, ... (scripts/doctor.sh checks). Runs in its own network
+  # namespace, so emulated topologies never touch the host's interfaces.
+  back:
+    profiles: [emulation]
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    image: miminet-back:dev
+    init: true
+    privileged: true
+    environment:
+      amqp_urls: *amqp_url
+      rpc_urls: ${rpc_urls:-rpc://}
+      exchange_name: ${exchange_name}
+      celery_concurrency: ${BACK_CELERY_CONCURRENCY:-2}
+      queue_names: queue1,queue2,queue3
+    volumes:
+      # Lets ENTRYPOINT.sh modprobe the kernel modules the emulation needs.
+      - /lib/modules:/lib/modules:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 >/dev/null"]
+      interval: 15s
+      timeout: 20s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rabbitmq-data:
+  avatars:
+  pcaps:
+  quiz-images:

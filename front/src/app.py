@@ -41,12 +41,14 @@ from miminet_admin import (
 )
 from miminet_auth import (
     animation_filters,
+    check_dev_auth_allowed,
     insert_test_user,
     issue_jwt_cookies,
     login_index,
     login_manager,
     logout,
     remove_test_user,
+    seed_dev_admin,
     user_profile,
     user_profile_view,
     vk_callback,
@@ -133,6 +135,7 @@ BASE_DOMAIN = os.environ.get("BASE_DOMAIN", None)
 
 # Получаем режим работы из переменных окружения
 MODE = os.getenv("MODE", "dev")
+check_dev_auth_allowed(MODE)
 
 # JWT cookie domain: explicit JWT_COOKIE_DOMAIN wins (empty string = host-only
 # cookies, required when the app is accessed by IP/localhost instead of
@@ -675,6 +678,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "dev":
             insert_test_user(app)
+            seed_dev_admin(app)
         elif sys.argv[1] == "prod":
             remove_test_user(app)
     else:

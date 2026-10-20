@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 SECRET_KEY_FILE = os.path.join(pathlib.Path(__file__).parent, "miminet_secret.conf")
 SECRET_KEY = ""
 
-if os.path.exists(SECRET_KEY_FILE):
+if os.environ.get("SECRET_KEY"):
+    SECRET_KEY = os.environ["SECRET_KEY"]
+elif os.path.exists(SECRET_KEY_FILE):
     with open(SECRET_KEY_FILE, "r") as file:
         SECRET_KEY = file.read().rstrip()
 else:

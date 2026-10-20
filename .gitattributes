@@ -1,1 +1,13 @@
 * text=auto
+
+# Files executed or parsed inside Linux containers must keep LF even when the
+# repo is cloned on Windows with core.autocrlf=true; a CRLF shebang fails with
+# "bad interpreter" / "not found".
+*.sh text eol=lf
+*.template text eol=lf
+*.conf text eol=lf
+.env* text eol=lf
+*.env text eol=lf
+Dockerfile text eol=lf
+compose.yaml text eol=lf
+enabled_plugins text eol=lf

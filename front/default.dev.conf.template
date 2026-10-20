@@ -1,0 +1,26 @@
+# nginx config for the local dev stack (compose.yaml). Prod uses
+# default.conf.template.
+#
+# The upstream is resolved per request through Docker's embedded DNS
+# (127.0.0.11) instead of once at startup: if nginx came up before the app,
+# a host resolver that answers every name (VPN fake-IP, corporate DNS) would
+# pin a bogus address and every request would be a 502 until nginx restarts.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+server {
+    listen 80;
+
+    set $miminet_upstream miminet:80;
+
+    location /ai/ {
+        include uwsgi_params;
+        uwsgi_pass $miminet_upstream;
+        uwsgi_read_timeout 300;
+        uwsgi_send_timeout 300;
+    }
+
+    location / {
+        include uwsgi_params;
+        uwsgi_pass $miminet_upstream;
+    }
+}

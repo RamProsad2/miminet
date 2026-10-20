@@ -45,25 +45,31 @@
 
 ## 🛠️ <a name="deployment"></a>Локальное развёртывание
 
-В каталогах `back` и `front` находятся примеры файлов `.env`, используемых в docker-compose и Ansible.
-
-### Важно: 
-- Не используйте ***WSL*** для развёртки бэкенда, оно не заработает.
-- Фронтенд можно разворачивать где угодно, в случае, если эмуляция не обязательна для разработки.
-- Для удобного запуска всех контейнеров можно воспользоваться скриптом [start_all_containers.sh](./start_all_containers.sh).
+Работает на Linux и Windows (WSL 2.5+); на macOS — см. оговорки в [docs/LOCAL_SETUP.md](./docs/LOCAL_SETUP.md).
+Нужен только Docker Engine (или Docker Desktop) с плагином compose.
 
 ### <a name="installation"></a>Установка:
-1. ```git clone git@github.com:mimi-net/miminet.git```
-2. Копируем ```vk_auth.json``` из группового чата в ```front/src```, чтобы можно было авторизоваться на сайте.
-3. Создаём файл ```miminet_secret.conf``` в ```front/src``` и пишем туда случайные буквы/цифры, чтобы не авторизовываться после каждого перезапуска докера.
-4. В файле .env (папка ```front```) поменять MODE=prod на MODE=dev.
-5. Запускаем приложение (например, через [start_all_containers.sh](./start_all_containers.sh)).
-6. Заходим на localhost и проверяем, что всё работает.
+```bash
+git clone https://github.com/mimi-net/miminet.git
+cd miminet
+./miminet.sh up        # Windows без WSL-терминала: .\miminet.ps1 up
+```
+Открываем http://localhost и входим под `admin@local` / `admin` (есть доступ к админке).
+
+- `./miminet.sh up` проверяет окружение (`scripts/doctor.sh`), при первом запуске создаёт `.env` из `.env.example` со случайными паролями, собирает образы, поднимает стек ([compose.yaml](./compose.yaml)) и ждёт, пока все сервисы станут healthy.
+- `./miminet.sh smoke` — сквозная проверка: вход, создание сети, эмуляция, сверка пакетов с эталоном.
+- `./miminet.sh help` — остальные команды (`down`, `logs`, `doctor --fix`, `reset`, `test`).
+- VK/Яндекс OAuth и файлы `vk_auth.json` / `miminet_secret.conf` для локальной разработки не нужны.
+
+Подробности по платформам и решение проблем: [docs/LOCAL_SETUP.md](./docs/LOCAL_SETUP.md).
+
+### Prod
+[start_all_containers.sh](./start_all_containers.sh), `front/docker-compose-prod.yml`, `back/docker-compose.yml` и `front/.env`, `back/.env` используются для prod и Ansible, для локальной разработки они не нужны.
 
 ## <a name="migration"></a>Database migrations
 > Следующие действия необходимо выполнять в случае, если вы обновили модель базы данных ([SQLAlchemy](https://www.sqlalchemy.org/)) и теперь хотите, чтобы изменения появились в реальной базе данных.
 ```
-docker exec -it miminet bash
+./miminet.sh shell     # или docker exec -it miminet bash для prod-стека
 flask db init
 flask db migrate
 flask db upgrade
